@@ -1,0 +1,4 @@
+handle sql errors without panic
+why did i need to comment out big_files?
+document need ro change /etc/fuse.conf to user_allow_other
+allow /fix adding files

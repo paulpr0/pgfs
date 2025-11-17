@@ -1,0 +1,15 @@
+[package]
+name = "pgfs"
+version = "0.1.0"
+authors = ["paulpr0 <github@pr0.co.uk>"]
+edition = "2024"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+fuser = "0.16"
+postgres = "0.19"
+log = "0.4"
+libc = "0.2"
+time = "0.1.44"
+bimap = "0.6"
+toml = "0.5.8"

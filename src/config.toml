@@ -1,0 +1,42 @@
+
+
+[database]
+
+database = "127.0.0.1/pgfstest"
+user = "paul"
+#todo store password another way
+pass = "test"
+
+[default]
+
+uid = 1001
+gid = 1001
+access = "readonly"
+
+[pics]
+
+table_name = "pics"
+data_type = "bytea"
+id_field= "id"
+length_field = "length"
+data_field = "image"
+name_field = "name"
+data_query = "select id, 'image_'||id || regexp_replace(mime_type, '^.*/','.') as name, octet_length(image) as length from pics;"
+readonly = true
+
+[filestest]
+
+table_name = "files"
+data_type = "bytea"
+id_field = "id"
+length_field = "length"
+data_field = "file"
+created_date_field = "created"
+modified_date_field = "modified"
+data_query = "select id, name,  octet_length(file) as length, created, modified from files"
+readonly = false
+
+
+
+
+
