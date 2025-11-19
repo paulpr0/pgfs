@@ -61,6 +61,7 @@ pub struct PgfsConfig {
 /// The config for an individual table/query. If mapping a table with a file as bytea, a name, an id
 /// which is an normal postgres int4 then you can mostly use the defaults. For more complicated
 /// table expressions, use the query configs to specify how to perform CRUD operations on your data.
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct TableConfig {
     ///This will be the directory name under the root directory. It does not need to be the same as the

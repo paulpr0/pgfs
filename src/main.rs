@@ -49,6 +49,7 @@ use crate::config::PgfsConfig;
 use std::time::SystemTime;
 use std::cmp::max;
 
+#[allow(dead_code)]
 struct ByteaFileSystem {
     name: OsString,
     next_inode: Inode,
@@ -122,14 +123,14 @@ impl ByteaFileSystem {
             cache: HashMap::new(),
         }
     }
-    pub fn get_next_inode(&mut self) -> Inode {
+    /*pub fn get_next_inode(&mut self) -> Inode {
         self.next_inode += 1;
         self.next_inode
     }
 
     pub fn flush_internal(&mut self, ino: Inode) {
         self.write_data_to_postgres(ino, None);
-    }
+    }*/
     fn create_internal(&mut self, _req: &Request<'_>, parent: u64, name: &OsStr) -> Result<Inode,i32 > {
         dbg!("create_internal");
         //create the file
@@ -151,7 +152,7 @@ impl ByteaFileSystem {
                 let query = format!("insert into {} ({}) values ($1) returning {}", table_name, table.name_field.as_ref().unwrap(), &table.id_field);
                 let id = self.db_client.query_one(query.as_str(), &[&name, ]);
                 if id.is_err() {
-                    dbg!(id);
+                    dbg!(id.err().unwrap());
                     return Err(ENOSYS);
                 } else {
                     let id = id.unwrap().get::<usize, i32>(0) as u64;
@@ -288,27 +289,13 @@ const ROOT: FileAttr = FileAttr {
     blksize: 512,
 };
 
-const DUMMY: FileAttr = FileAttr {
-    ino: 2,
-    size: 0,
-    blocks: 8,
-    atime: std::time::UNIX_EPOCH, // 1970-01-01 00:00:00
-    mtime: std::time::UNIX_EPOCH,
-    ctime: std::time::UNIX_EPOCH,
-    crtime: std::time::UNIX_EPOCH,
-    kind: FileType::RegularFile,
-    perm: 0o755,
-    nlink: 2,
-    uid: 1001,
-    gid: 20,
-    rdev: 0,
-    flags: 0,
-    blksize: 512 * 1024,
-};
+
 
 impl Filesystem for ByteaFileSystem {
-    fn init(&mut self, _req: &Request<'_>, _config: &mut KernelConfig) -> Result<(), i32> {
-        _config.set_max_write(1024*128);
+    fn init(&mut self, _req: &Request<'_>, config: &mut KernelConfig) -> Result<(), i32> {
+        if let Err(_e) = config.set_max_write(1024*128) {
+            dbg!("Unable to set max write");
+        }
         Ok(())
     }
 
@@ -469,7 +456,9 @@ impl Filesystem for ByteaFileSystem {
             let ino = ino.1;
             //self.write_data_to_postgres(ino, None);
             if let Some((_,pgid)) = self.file_inodes.get(&ino) {
-                self.db_client.execute(delete_query_string.as_str(), &[&(pgid.pg_id as i32)]);
+                if let Err(_e) = self.db_client.execute(delete_query_string.as_str(), &[&(pgid.pg_id as i32)]) {
+                    dbg!("Failed to delete: ", delete_query_string);
+                }
                 //if there is something in the cache, then we are deleting a file
                 //which has not been fully written. Add a config (default true)
                 //to flush first
@@ -615,10 +604,10 @@ impl Filesystem for ByteaFileSystem {
             if ino > 1 {
                 if let Some(table_name) = self.table_dir_inodes.get_by_left(&ino) {
                     if offset == 0 {
-                        reply.add(ino, 1, FileType::Directory, ".");
+                        let _=reply.add(ino, 1, FileType::Directory, ".");
                     }
                     if offset <= 1 {
-                        reply.add(ino, 2, FileType::Directory, "..");
+                        let _=reply.add(ino, 2, FileType::Directory, "..");
                     }
                     if let Some(table) = self.tables.get(table_name) {
                         let mut i = 3;
@@ -645,9 +634,9 @@ impl Filesystem for ByteaFileSystem {
                             };
                             self.next_inode += 1;
                             let inode = self.next_inode;
-                            reply.add(inode, i, FileType::RegularFile, row.get::<&str, String>("name"));
+                            let _=reply.add(inode, i, FileType::RegularFile, row.get::<&str, String>("name"));
                             let mtime:Option<SystemTime> = match table.modified_field.as_ref() {
-                                Some(modified_field) => {(row.get::<&str, Option<SystemTime>>(modified_field.as_str()))},
+                                Some(modified_field) => {row.get::<&str, Option<SystemTime>>(modified_field.as_str())},
                                 None => {None}
                             };
                             let ctime:Option<SystemTime> = match table.created_field.as_ref() {
@@ -764,31 +753,31 @@ impl Filesystem for ByteaFileSystem {
     }
 
     fn getlk(&mut self, _req: &Request<'_>, _ino: u64, _fh: u64, _lock_owner: u64, _start: u64, _end: u64, _typ: i32, _pid: u32, reply: ReplyLock) {
-        todo!()
+        reply.error(ENOSYS);
     }
 
     fn setlk(&mut self, _req: &Request<'_>, _ino: u64, _fh: u64, _lock_owner: u64, _start: u64, _end: u64, _typ: i32, _pid: u32, _sleep: bool, reply: ReplyEmpty) {
-        todo!()
+        reply.error(ENOSYS);
     }
 
     fn bmap(&mut self, _req: &Request<'_>, _ino: u64, _blocksize: u32, _idx: u64, reply: ReplyBmap) {
-        todo!()
+        reply.error(ENOSYS);
     }
 
     fn ioctl(&mut self, _req: &Request<'_>, _ino: u64, _fh: u64, _flags: u32, _cmd: u32, _in_data: &[u8], _out_size: u32, reply: ReplyIoctl) {
-        todo!()
+        reply.error(ENOSYS);
     }
 
     fn fallocate(&mut self, _req: &Request<'_>, _ino: u64, _fh: u64, _offset: i64, _length: i64, _mode: i32, reply: ReplyEmpty) {
-        todo!()
+        reply.error(ENOSYS);
     }
 
     fn lseek(&mut self, _req: &Request<'_>, _ino: u64, _fh: u64, _offset: i64, _whence: i32, reply: ReplyLseek) {
-        todo!()
+        reply.error(ENOSYS);
     }
 
     fn copy_file_range(&mut self, _req: &Request<'_>, _ino_in: u64, _fh_in: u64, _offset_in: i64, _ino_out: u64, _fh_out: u64, _offset_out: i64, _len: u64, _flags: u32, reply: ReplyWrite) {
-        todo!()
+        reply.error(ENOSYS);
     }
 }
 
@@ -858,34 +847,4 @@ fn main() {
     );
     fuser::mount2(filesystem, mountpoint, &options).unwrap();
 
-
-    //let mut client = Client::connect("host=localhost user=postgres", NoTls).unwrap();
-   // let mut client = Client::connect("postgres://paul:test@127.0.0.1/wsf", NoTls)
-   //     .expect("Unable to connect to database");
-
-    /*let args: Vec<OsString> = env::args_os().collect();
-
-    if args.len() != 3 {
-        println!("usage: {} <target> <mountpoint>", &env::args().next().unwrap());
-        ::std::process::exit(-1);
-    }
-*/
-
-//    let filesystem = ByteaFileSystem::new(
-//        args[1].clone().to_str().unwrap_or("filesystem"),
-//        client,
-//        vec![Table{
-//            table_name: "poopics".to_string(),
-//            id_field: "id".to_string(),
-    //           length_field: "length".to_string(),
-    //           bytea_field: "image".to_string(),
-    //           query_string: "select id, 'image_'||id || regexp_replace(mime_type, '^.*/','.') as name, length(image) from poopics;".to_string(),
-    //           data_query_string: "select substring(image, $2, $3) from poopics where (id=$1);".to_string()
-    //       }]
-    //   );
-    /*
-        let fuse_args: Vec<&OsStr> = vec![&OsStr::new("-o"), &OsStr::new("auto_unmount")];
-
-        fuse_mt::mount(fuse_mt::FuseMT::new(filesystem, 1), &args[2], &fuse_args).unwrap();
-    */
 }
