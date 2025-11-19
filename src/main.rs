@@ -37,9 +37,8 @@
 
 mod config;
 
-use libc::{O_DIRECTORY, O_RDONLY, ENOSYS, ENOENT, ENODATA, EIO, timespec, EROFS, ENOATTR, EPERM, EISDIR};
+use libc::{ ENOSYS, ENOENT, ENODATA, EIO,  EROFS, EPERM, EISDIR};
 use fuser::*;
-use time::Timespec;
 use postgres::{Client, NoTls};
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
@@ -48,10 +47,7 @@ use std::collections::HashMap;
 use bimap::BiMap;
 use crate::config::PgfsConfig;
 use std::time::SystemTime;
-use toml::ser::Error::UnsupportedNone;
 use std::cmp::max;
-use log::error;
-//pub const ENOSYS: i32 = 38;
 
 struct ByteaFileSystem {
     name: OsString,
@@ -134,7 +130,7 @@ impl ByteaFileSystem {
     pub fn flush_internal(&mut self, ino: Inode) {
         self.write_data_to_postgres(ino, None);
     }
-    fn create_internal(&mut self, req: &Request<'_>, parent: u64, name: &OsStr) -> Result<Inode,i32 > {
+    fn create_internal(&mut self, _req: &Request<'_>, parent: u64, name: &OsStr) -> Result<Inode,i32 > {
         dbg!("create_internal");
         //create the file
         //get parent to know what table it is
@@ -178,7 +174,7 @@ impl ByteaFileSystem {
             //let mut data_to_write: Option<(i64, &[u8])> = None;
             let mut new_len = None;
             if self.cache.contains_key(&ino) {
-                let (mut offset, mut cached_data) = self.cache.remove(&ino).unwrap();
+                let (offset, mut cached_data) = self.cache.remove(&ino).unwrap();
                 if data.is_some() {
                     if offset as usize + cached_data.len() == data.as_ref().unwrap().0 as usize {
                         //existing data precedes new data
@@ -225,7 +221,7 @@ impl ByteaFileSystem {
             //length is max of offset + new data and existing length
             if let Some(attrs) = self.inode_file_attrs.get_mut(&ino) {
                 if let Some(new_len) = new_len {
-                    attrs.size = max(attrs.size, (new_len as u64));
+                    attrs.size = max(attrs.size, new_len as u64);
                     attrs.blocks = (attrs.size+1)/(attrs.blksize as u64)
                 }
             }
@@ -359,7 +355,7 @@ impl Filesystem for ByteaFileSystem {
         }
     }
 
-    fn forget(&mut self, _req: &Request<'_>, ino: u64, _nlookup: u64) {
+    fn forget(&mut self, _req: &Request<'_>, _ino: u64, _nlookup: u64) {
         dbg!("forget");
     }
 
@@ -407,7 +403,7 @@ impl Filesystem for ByteaFileSystem {
                          error = Some(EIO);
                          dbg!("Failed to truncate: ", query_string);
                      }
-                     if let Some(mut attr) = self.inode_file_attrs.get_mut(&ino) {
+                     if let Some(attr) = self.inode_file_attrs.get_mut(&ino) {
                          attr.size = size;
                      }
                 }
@@ -418,7 +414,7 @@ impl Filesystem for ByteaFileSystem {
                 if self.db_client.execute(query_string.as_str(), &[_ctime.as_ref().unwrap(), &(pgid.pg_id as i32)]).is_err() {
                     error = Some(EPERM); //calling it a permissions error to avoid issues with clients
                 }
-                if let Some(mut attr) = self.inode_file_attrs.get_mut(&ino) {
+                if let Some(attr) = self.inode_file_attrs.get_mut(&ino) {
                     attr.ctime = _ctime.unwrap();
                 }
             }
@@ -433,7 +429,7 @@ impl Filesystem for ByteaFileSystem {
                 if self.db_client.execute(query_string.as_str(), &[&time, &(pgid.pg_id as i32)]).is_err() {
                     error = Some(EPERM); //calling it a permissions error to avoid issues with clients
                 }
-                if let Some(mut attr) = self.inode_file_attrs.get_mut(&ino) {
+                if let Some(attr) = self.inode_file_attrs.get_mut(&ino) {
                     attr.mtime = time;
                 }
             }
@@ -447,7 +443,7 @@ impl Filesystem for ByteaFileSystem {
     }
 
     fn readlink(&mut self, _req: &Request<'_>, _ino: u64, reply: ReplyData) {
-        todo!()
+        reply.error(ENOSYS)
     }
 
 
@@ -474,7 +470,7 @@ impl Filesystem for ByteaFileSystem {
             //self.write_data_to_postgres(ino, None);
             if let Some((_,pgid)) = self.file_inodes.get(&ino) {
                 self.db_client.execute(delete_query_string.as_str(), &[&(pgid.pg_id as i32)]);
-                //if there is something in the cache, then we are deletin a file
+                //if there is something in the cache, then we are deleting a file
                 //which has not been fully written. Add a config (default true)
                 //to flush first
                 self.cache.remove(&ino);
@@ -506,7 +502,7 @@ impl Filesystem for ByteaFileSystem {
         if let Some(table_name) = self.table_dir_inodes.get_by_left(&parent) {
             if let Some(table) = self.tables.get(table_name) {
                 let query = format!("update {} set {} = ($1) where {} = $2", table_name, table.name_field.as_ref().unwrap(), &table.name_field.as_ref().unwrap());
-                if let Err(e) = self.db_client.execute(query.as_str(), &[&newname.to_str(), &name.to_str()]) {
+                if let Err(_e) = self.db_client.execute(query.as_str(), &[&newname.to_str(), &name.to_str()]) {
                     reply.error(EIO); //could do better with the error here maybe
                     return;
                 }
@@ -539,7 +535,6 @@ impl Filesystem for ByteaFileSystem {
                 dbg!(data.len());
                 reply.data(data)
             } else {
-                dbg!("query failed {}", p_row);
                 reply.data(&[])
             }
         } else {
@@ -595,7 +590,7 @@ impl Filesystem for ByteaFileSystem {
         reply.opened(ino, 0)
     }
 
-    fn readdir(&mut self, req: &Request<'_>, ino: u64, fh: u64, offset: i64, mut reply: ReplyDirectory) {
+    fn readdir(&mut self, _req: &Request<'_>, ino: u64, _fh: u64, offset: i64, mut reply: ReplyDirectory) {
         //  dbg!(format!("readdir {} {} {}", ino, fh, offset));
         dbg!("readdir");
         if ino == 1 {
@@ -631,7 +626,7 @@ impl Filesystem for ByteaFileSystem {
                             dbg!("add {}", row.get::<&str, String>("name"));
                             let child = ChildNode { parent: ino, name: row.get("name") };
                             if self.entries.contains_left(&child) {
-                                reply.add(*self.entries.get_by_left(&child).unwrap(), i, FileType::RegularFile, row.get::<&str, String>("name"));
+                                let _=reply.add(*self.entries.get_by_left(&child).unwrap(), i, FileType::RegularFile, row.get::<&str, String>("name"));
                                 i+=1;
                                 continue
                             }
@@ -679,7 +674,7 @@ impl Filesystem for ByteaFileSystem {
     }
 
     fn readdirplus(&mut self, _req: &Request<'_>, _ino: u64, _fh: u64, _offset: i64, reply: ReplyDirectoryPlus) {
-        todo!()
+        reply.ok()
     }
 
     fn releasedir(&mut self, _req: &Request<'_>, _ino: u64, _fh: u64, _flags: i32, reply: ReplyEmpty) {
@@ -722,7 +717,7 @@ impl Filesystem for ByteaFileSystem {
 
     fn mknod(&mut self, _req: &Request<'_>, _parent: u64, _name: &OsStr, _mode: u32, _umask: u32, _rdev: u32, reply: ReplyEntry) {
 
-        match ( self.create_internal( _req, _parent, _name)) {
+        match  self.create_internal( _req, _parent, _name) {
             Ok(r) =>
                 reply.entry(&TTL, &ByteaFileSystem::file_attr(r, 0, Some(SystemTime::now()), Some(SystemTime::now())), 0),
             Err(e) =>
@@ -753,7 +748,6 @@ impl Filesystem for ByteaFileSystem {
                 let query = format!("insert into {} ({}) values ($1) returning {}", table_name, table.name_field.as_ref().unwrap(), &table.id_field);
                 let id = self.db_client.query_one(query.as_str(), &[&name, ]);
                 if id.is_err() {
-                    dbg!(id);
                     reply.error(ENOSYS);
                 } else {
                     let id = id.unwrap().get::<usize, i32>(0) as u64;
@@ -820,25 +814,26 @@ fn main() {
     log::set_logger(&LOGGER).unwrap();
     log::set_max_level(log::LevelFilter::Debug);
 
+    let args: Vec<String> = env::args().collect();
+    let config_file_location = if args.len() < 2 {
+        "config.toml".to_string()
+    } else {
+        args[1].clone()
+    };
+
     use std::fs;
-    let config_string = fs::read_to_string("/home/paul/rust/pgfs/src/config.toml").unwrap();
-    //  use toml::{from_str, Value};
-    // dbg!(toml::from_str::<toml::Value>(&config_string));
+    let config_string = fs::read_to_string(config_file_location).unwrap();
 
     let cfg: PgfsConfig = PgfsConfig::new(&config_string).unwrap();
 
-    let mountpoint = "/home/paul/tmp/pgfs";
+    dbg!(&cfg);
+    let mountpoint = cfg.mountpoint;
     let mut options = vec![MountOption::RW, MountOption::FSName("pgtest".to_string())];
     options.push(MountOption::AutoUnmount);
- //   options.push(MountOption::CUSTOM("big_writes".to_string()));
-    //  options.push(MountOption::AllowRoot);
 
 
-    //todo move most of this out of the loop - the only thing loopy should be the table vec
-    //todo for now this means only one database connection which is fine cos just run two programs
-    dbg!(&cfg);
     let db_string = cfg.connection_string.expect("Database connection details missing");
-    let mut client = Client::connect(&db_string, NoTls).expect(format!("Unable to open a connection to database {}", db_string).as_str());
+    let  client = Client::connect(&db_string, NoTls).expect(format!("Unable to open a connection to database {}", db_string).as_str());
     let mut tables = vec![];
     cfg.table_config.iter().for_each(|(name, fs)| {
         dbg!(name);

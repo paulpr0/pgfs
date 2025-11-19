@@ -1,4 +1,5 @@
 
+mountpoint = "/home/paul/tmp/pgfs"
 
 [database]
 

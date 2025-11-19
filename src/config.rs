@@ -15,7 +15,8 @@
 //! uid = 1001
 //! gid = 1001
 //! access = "readonly"
-//!
+//! mountpoint = "/tmp/pgfs"
+//! 
 //! [pics]
 //!
 //! table_name = "pics"
@@ -54,6 +55,7 @@ use toml::Value;
 pub struct PgfsConfig {
     pub table_config: HashMap<String,TableConfig>,
     pub connection_string: Option<String>,
+    pub mountpoint: String,
 }
 
 /// The config for an individual table/query. If mapping a table with a file as bytea, a name, an id
@@ -92,9 +94,7 @@ pub struct TableConfig {
 
     pub created_date_field:Option<String>,
     pub modified_date_field: Option<String>,
-    //  pub database: Option<String>,
-    //  pub user: Option<String>,
-    //  pub pass: Option<String>
+    
 }
 
 impl PgfsConfig {
@@ -103,6 +103,7 @@ impl PgfsConfig {
         let mut result = PgfsConfig {
             table_config: HashMap::new(),
             connection_string: None,
+            mountpoint: "/tmp/pgfs".to_string(),
         };
 
         let empty_string_value = Value::String("".to_string());
@@ -119,6 +120,10 @@ impl PgfsConfig {
             }
         }
 
+        //set mountpoint
+        if let Some(mountpoint_value) = tml.get("mountpoint") {
+            result.mountpoint = mountpoint_value.as_str().unwrap_or(result.mountpoint.as_str()).to_string();
+        }
 
         //get defaults
         let mut defaults = TableConfig {
@@ -179,20 +184,11 @@ impl PgfsConfig {
             if let Some(modified_date_field) = default.get("modified_date_field") {
                 defaults.modified_date_field = Some(modified_date_field.as_str().unwrap().to_string());
             }
-      /*      if let Some(database) = default.get("database") {
-                defaults.database = Some(database.as_str().unwrap().to_string());
-            }
-            if let Some(user) = default.get("user") {
-                defaults.user = Some(user.as_str().unwrap().to_string());
-            }
-            if let Some(pass) = default.get("pass") {
-                defaults.pass = Some(pass.as_str().unwrap().to_string());
-            }*/
-        }
+       }
 
         let tables = tml.as_table().unwrap();
         for (table_name, table) in tables.iter() {
-            if table_name == "default" || table_name == "database" {
+            if table_name == "default" || table_name == "database" || table_name == "mountpoint" {
                 continue
             }
             let mut t = defaults.clone();
@@ -232,15 +228,7 @@ impl PgfsConfig {
             if let Some(modified_date_field) = table.get("modified_date_field") {
                 t.modified_date_field = Some(modified_date_field.as_str().unwrap().to_string());
             }
-      /*      if let Some(database) = table.get("database") {
-                t.database = Some(database.as_str().unwrap().to_string());
-            }
-            if let Some(user) = table.get("user") {
-                t.user = Some(user.as_str().unwrap().to_string());
-            }
-            if let Some(pass) = table.get("pass") {
-                t.pass = Some(pass.as_str().unwrap().to_string());
-            }*/
+
             result.table_config.insert(table_name.to_string(), t);
         }
 
