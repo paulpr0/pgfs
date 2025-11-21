@@ -1,6 +1,6 @@
 [package]
 name = "pgfs"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["paulpr0 <github@pr0.co.uk>"]
 edition = "2024"
 license = "MIT"
